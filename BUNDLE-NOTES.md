@@ -1,7 +1,7 @@
 # Bundle notes — Pump.fun Replay Sprint paper bot
 
 - Repo: https://github.com/zetinhere/u-jackxyz72-pump-fun-replay-sprint-paper-bot-0b809122
-- Commit to submit (round 2): 9f557716907bb21f8c19aa2c440d386b945cd0d4 (main)
+- Commit to submit (round 2): 9f557716907bb21f8c19aa2c440d386b945cd0d4 (the code commit; main HEAD adds only this notes update on top)
 - Round-1 commit (REJECTED at gate, grade run timed out): 69b7d6d59d651851c72f0b77eeeeb064c9511c70
 
 ## Round 2 — speed fix (2026-11-24, this builder)
