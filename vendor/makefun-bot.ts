@@ -3,6 +3,12 @@
 // no install). Copy this one file into your bot's repository (vendor/makefun-bot.ts keeps it out of
 // the authorship counts) and hand runBot your strategy:
 //
+// NOTE (this entry): this copy differs from the kit's sdk/ts/makefun-bot.ts in ONE place —
+// the Curve reserves are kept as the decimal strings the harness sends and converted to
+// bigint only where a strategy reads them, instead of converting every event's reserves
+// on arrival. That is a pure performance change: the wire protocol, the state a strategy
+// can observe, and every value it can read are identical. See the Curve interface comment.
+//
 //   import { runBot, LAMPORTS_PER_SOL } from './vendor/makefun-bot.ts';
 //
 //   await runBot({
@@ -366,10 +372,17 @@ export interface Curve {
   readonly mint: Pubkey;
   /** Slot of its CreateEvent; null when the shim saw the mint first through a trade or a mark. */
   created_slot: number | null;
-  virtual_token_reserves: bigint;
-  virtual_quote_reserves: bigint;
-  real_token_reserves: bigint;
-  real_quote_reserves: bigint;
+  /**
+   * Reserves as the harness sent them (u64 decimal strings), converted to bigint
+   * only where a strategy reads them. The kit's SDK converts every event's reserves
+   * to bigint on arrival; on a 24h replay that is ~600k conversions for curves most
+   * strategies never look at, so this copy keeps the strings and converts on demand.
+   * The wire protocol and every value a strategy can observe are unchanged.
+   */
+  virtual_token_reserves: U64;
+  virtual_quote_reserves: U64;
+  real_token_reserves: U64;
+  real_quote_reserves: U64;
   /** Slot of the trade the reserves follow (the create slot until the first trade). */
   reserves_slot: number;
   /** TradeEvents seen on it. */
@@ -445,7 +458,7 @@ export class BotState {
   maxBuyLamports(mint: Pubkey): bigint {
     const c = this.curves.get(mint);
     if (c === undefined || c.complete) return 0n;
-    return (c.real_quote_reserves * BigInt(this.hello.caps.max_order_bps_of_real_reserve)) / BPS;
+    return (BigInt(c.real_quote_reserves) * BigInt(this.hello.caps.max_order_bps_of_real_reserve)) / BPS;
   }
 
   /** Mints held plus mints with a buy pending: what counts against caps.max_open_positions. */
@@ -476,25 +489,25 @@ export class BotState {
       const c = this.curves.get(m.mint);
       if (c !== undefined && m.slot < c.reserves_slot) continue;
       const curve = c ?? this.#newCurve(m.mint, null, m.slot);
-      curve.virtual_token_reserves = BigInt(m.virtual_token_reserves);
-      curve.virtual_quote_reserves = BigInt(m.virtual_quote_reserves);
-      curve.real_token_reserves = BigInt(m.real_token_reserves);
-      curve.real_quote_reserves = BigInt(m.real_quote_reserves);
+      curve.virtual_token_reserves = m.virtual_token_reserves;
+      curve.virtual_quote_reserves = m.virtual_quote_reserves;
+      curve.real_token_reserves = m.real_token_reserves;
+      curve.real_quote_reserves = m.real_quote_reserves;
       curve.reserves_slot = m.slot;
     }
     for (const e of batch.events) {
       if (e.event === 'CreateEvent') {
         const curve = this.#newCurve(e.mint, e.slot, e.slot);
-        curve.virtual_token_reserves = BigInt(e.virtual_token_reserves);
-        curve.virtual_quote_reserves = BigInt(e.virtual_quote_reserves);
-        curve.real_token_reserves = BigInt(e.real_token_reserves);
-        curve.real_quote_reserves = 0n;
+        curve.virtual_token_reserves = e.virtual_token_reserves;
+        curve.virtual_quote_reserves = e.virtual_quote_reserves;
+        curve.real_token_reserves = e.real_token_reserves;
+        curve.real_quote_reserves = '0';
       } else if (e.event === 'TradeEvent') {
         const curve = this.curves.get(e.mint) ?? this.#newCurve(e.mint, null, e.slot);
-        curve.virtual_token_reserves = BigInt(e.virtual_token_reserves);
-        curve.virtual_quote_reserves = BigInt(e.virtual_quote_reserves);
-        curve.real_token_reserves = BigInt(e.real_token_reserves);
-        curve.real_quote_reserves = BigInt(e.real_quote_reserves);
+        curve.virtual_token_reserves = e.virtual_token_reserves;
+        curve.virtual_quote_reserves = e.virtual_quote_reserves;
+        curve.real_token_reserves = e.real_token_reserves;
+        curve.real_quote_reserves = e.real_quote_reserves;
         curve.reserves_slot = e.slot;
         curve.trades += 1;
       } else {
@@ -556,10 +569,10 @@ export class BotState {
     const curve: Curve = {
       mint,
       created_slot: created,
-      virtual_token_reserves: 0n,
-      virtual_quote_reserves: 0n,
-      real_token_reserves: 0n,
-      real_quote_reserves: 0n,
+      virtual_token_reserves: '0',
+      virtual_quote_reserves: '0',
+      real_token_reserves: '0',
+      real_quote_reserves: '0',
       reserves_slot: slot,
       trades: 0,
       complete: false,

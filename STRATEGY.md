@@ -55,3 +55,29 @@ Exits — checked on every batch:
 The strategy is a pure function of the batches the harness sends: no clock, no
 randomness, no I/O, no network. Two runs on the same data produce byte-identical
 action logs.
+
+## Performance (round-2 fix, 2026-11-24)
+
+Round 1 (commit 69b7d6d) was rejected at the gate because the server's grade run
+timed out. Profiling the dev window (63,369 batches, 128,058 events) showed the
+slowness was per-slot work that grew with history, not the strategy:
+
+- The entry scan walked the whole coin map on every batch: 33.3M iterations to
+  consider 6,004 live coins. Now a `young` set holds only the coins still inside
+  the 3–10 slot entry window (max 3 at a time on this window); the scan visits
+  those alone, in the same creation order.
+- The 20-slot flow window rescanned a coin's whole `recent` tape (one coin had
+  3,846 ticks). Now the tape is pruned with a head index as trades arrive and
+  compacted past 64 stale ticks, and tape is only kept while a coin is young
+  (creator sells are still recorded at any age, for the exit rule on held coins).
+- The vendored shim converted every event's reserves to bigint on arrival
+  (~600k conversions for curves the strategy never reads). Curve reserves are
+  now kept as the decimal strings the harness sends and converted only where a
+  strategy reads them; the wire protocol and every observable value are unchanged.
+- All SOL thresholds are converted to lamports once, at strategy creation.
+
+Measured in-process against the kit's own sim engine (dev window, seed 1):
+`onBatch` 1,695–1,939 ms → 216–684 ms (about 3x); bot-side total 2,216 ms →
+635–1,306 ms. The decisions are unchanged: the reply stream hashes identically
+to round 1, and grade-local on the new code reproduces the round-1 action log
+byte for byte (same `action_log_sha256`, same net PnL +0.284076 SOL).
