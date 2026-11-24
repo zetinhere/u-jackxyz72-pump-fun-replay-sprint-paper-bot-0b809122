@@ -1,7 +1,9 @@
 # Bundle notes — Pump.fun Replay Sprint paper bot
 
 - Repo: https://github.com/zetinhere/u-jackxyz72-pump-fun-replay-sprint-paper-bot-0b809122
-- Commit: 5072198 (main; see `git log` for the final sha at submit time)
+- Commit graded: 69b7d6d59d651851c72f0b77eeeeb064c9511c70 (main)
+- Dev result_sha256: cffccacf59dd952445c7db1a7dbf6242a68844b05282979b871319d240dfc3dd
+  (process driver; server's will differ: harness runs Node v26.13.1, this machine v24.22.1)
 - Wallet (payout): HRNPnwdEdgP2xyZjnBENg27StwESh4MLM4g1eYK8tqUQ
 - Kit anchor: `makefun anchor 0021e7730ccd8c930677ab01fde15c028c940f57 round 34231168`
   (init ran in this repo before any code was written; LICENSE MIT + `.makefun/freshness.json` are the anchor commit)
