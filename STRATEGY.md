@@ -45,6 +45,10 @@ Exits — checked on every batch:
 - The profit is concentrated, as it is for every strategy on this data: the top 3
   coins make ~all of the net PnL. That is the nature of pump.fun — many small
   bets, a few big winners — so the sizing stays small and the stops stay hard.
+- Robustness: split-half on real data, −0.03 SOL on the first 12h and +0.30 SOL on
+  the second 12h. Stress test on 20 rebuilt (reshuffled) copies: median −0.59 SOL,
+  17 of 20 losing — the dev score leans on this window's own coins, so the final
+  24h window is high-variance with positive skew.
 
 ## Determinism
 
