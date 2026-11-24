@@ -81,3 +81,22 @@ Measured in-process against the kit's own sim engine (dev window, seed 1):
 635–1,306 ms. The decisions are unchanged: the reply stream hashes identically
 to round 1, and grade-local on the new code reproduces the round-1 action log
 byte for byte (same `action_log_sha256`, same net PnL +0.284076 SOL).
+
+## Performance (round-3 investigation, 2026-11-24)
+
+Round 2 (commit 9f55771) was rejected the same way — the server's grade run timed
+out — but the timeout does not reproduce locally: the full grade-local on one CPU
+is 48 s wall (158 s under heavy VM contention) against the server's 1800 s budget,
+and one bot execution is 6.5–11 s wall with 3.0–3.3 s of bot CPU and 122–133 MB
+peak RSS. A Node CPU profile of the bot child shows the strategy's `onBatch` is
+0.7% of samples; the rest of active CPU is protocol overhead the entry cannot
+avoid (JSON.parse of the harness's 173 MB of batch lines, writing the 63,369
+replies), and 66% of samples are idle, blocked on stdin. Wall time for the
+identical bot varied 6.5 s → 36.6 s purely with host scheduling contention, so the
+server timeout is most plausibly server-side (sandbox transport/host contention
+across 63,369 lockstep round-trips) or transient — no bot-side change can reduce
+the round-trip count. Round 3 therefore changes no strategy code: it only adds
+`package.json` (`{"type": "module"}`, killing Node's per-start CommonJS reparse
+warning/overhead). Decisions are byte-identical to round 2 (same
+`action_log_sha256`, same net PnL +0.284076 SOL, confirmed by two constrained
+grade-local runs). Full measurements in BUNDLE-NOTES.md.

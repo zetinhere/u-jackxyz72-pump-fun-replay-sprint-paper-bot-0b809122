@@ -1,10 +1,76 @@
 # Bundle notes — Pump.fun Replay Sprint paper bot
 
 - Repo: https://github.com/zetinhere/u-jackxyz72-pump-fun-replay-sprint-paper-bot-0b809122
-- Commit to submit (round 2): 9f557716907bb21f8c19aa2c440d386b945cd0d4 (the code commit; main HEAD adds only this notes update on top)
+- Commit to submit (round 3): <this builder's new commit; see "Round 3" below>
+- Round-2 commit (REJECTED at grade, run_completes timeout): 9f557716907bb21f8c19aa2c440d386b945cd0d4
 - Round-1 commit (REJECTED at gate, grade run timed out): 69b7d6d59d651851c72f0b77eeeeb064c9511c70
 
-## Round 2 — speed fix (2026-11-24, this builder)
+## Round 3 — timeout investigation + startup fix (2026-11-24, this builder)
+
+What was measured (do not guess — measured, with the kit's own sim engine and CLI):
+- Reproduction of the timeout FAILED: the timeout does not reproduce locally. Full
+  `grade-local --driver process` on ONE CPU (taskset -c 0) of the round-2 code: **48 s
+  wall, status finished**, net PnL +0.284076 SOL, action_log_sha256
+  5cf11f8d1f1628a56e7bec21abd2b7eee875c93327898e92ce36e44d106929fa — against the
+  server's 1800 s wall budget per execution. That is a 37x margin.
+- A lockstep profiler driving the bot as a child process through the kit's own
+  ReplayEngine (bot on 1 CPU + 768 MB heap cap, engine unconstrained, mirroring the
+  server where only the bot is sandboxed): one execution is **6.5–11.0 s wall, bot CPU
+  3.0–3.3 s, peak RSS 122–133 MB**; the engine's own work is 0.6 s. A repeat run of
+  the IDENTICAL bot under VM contention took 36.6 s wall with bot CPU still 4.0 s —
+  the extra ~30 s is pure scheduling/IPC latency, not bot work. Wall time for this
+  entry is host-scheduling-bound, not bot-CPU-bound.
+- Node CPU profile of the bot child: the strategy's onBatch is **0.7% of samples**;
+  the rest of active CPU is protocol overhead the entry cannot avoid — JSON.parse of
+  the harness's 173 MB of batch lines (~11%) and writing the 63,369 replies (~8%);
+  66% of samples are idle (blocked on stdin). The bot's active CPU (~3 s) is ~90%
+  protocol overhead. There is no strategy fat left to cut: round 2 already removed it.
+- Slow replies do NOT correlate with big batches (1-event batches took 62–67 ms,
+  the 2-event first batch 365–757 ms cold start): those are wakeup/JIT latency.
+- Cross-check: the sibling boothlord replay entry (same dataset, same harness, same
+  limits, same bot shape) has NOT been graded yet (stage "checked", grading queued),
+  so there is no passing replay grade to compare against — no replay bot has
+  demonstrably passed a server grade yet. The server timeout is therefore most
+  plausibly server-side (sandbox transport/host contention across 63,369 lockstep
+  round-trips, where ~28 ms per round-trip alone would exhaust the 1800 s budget)
+  or transient (rounds 1 and 2 were both graded in the same 05:52–10:02 UTC window).
+  No bot-side change can reduce the round-trip count — the harness fixes it — so
+  this round ships the cheapest real shave available and re-tests empirically.
+
+What changed (one file, no strategy change, decisions byte-identical):
+- Added `package.json` (`{"type": "module"}`): Node no longer re-parses main.ts as
+  CommonJS first (kills the MODULE_TYPELESS_PACKAGE_JSON warning on every start and
+  its reparse overhead). No code the bot executes changed.
+- Nothing else changed: the strategy, the vendor shim and the entrypoint are untouched,
+  because the profile shows the strategy is 0.7% of bot CPU and the rest is protocol
+  overhead. Churning the strategy for ~20 ms of 3 s would risk the decisions for nothing.
+
+Verification — decisions byte-identical to round 2:
+- Profiler, seed 1, before and after the change: 318 fills, 89 round trips, final
+  cash 10304761946 lamports (+0.304762 SOL) in both runs; bot CPU 3.0 s → 4.0 s
+  (run-to-run noise under contention), peak RSS 122 → 127 MB.
+- grade-local --driver process, taskset -c 0, round-3 code, TWICE: run 1 **158 s
+  wall, finished, net PnL +0.284076 SOL, action_log_sha256 5cf11f8d… (identical)**,
+  L1 regrade reproduced byte for byte; run 2 **~155 s wall, finished, same action
+  log** — determinism confirmed. (Both slower than the quiet 48 s baseline purely
+  from VM contention that day; still 11x under the 1800 s budget.)
+- kit check on the committed HEAD before this commit (stale round-2 transcripts):
+  **17 passed, 0 failed**, 4 skipped, 3 at submission; thinking_reproduces 35.2%
+  (413/1172 lines). The parent must re-bundle (this builder's session included)
+  and re-run check before submitting, as the new commit is not in the old bundle.
+- Constraints NOT exactly reproducible here, recorded honestly: the kit's docker
+  driver cannot run in this VM (no docker daemon), so grade-local used --driver
+  process; this VM's cgroup has no memory controller, so the 1 GB bot cap was
+  approximated with node --max-old-space-size=768 (peak RSS 122–133 MB, far under);
+  /usr/bin/time is absent. None of these change the conclusion: the bot is ~3 s CPU
+  and ~11 s wall per execution on 1 CPU.
+
+- Builder session file: /home/hatch/agents/agent-d487f0b7-e72e-4ded-a24a-f2aa4df54eb0/sessions/d487f0b7-e72e-4ded-a24a-f2aa4df54eb0.jsonl
+- System prompt: ~/workspace/system/system_prompt.md
+- Profiler driver (not part of the entry): /tmp/prof/drive.mts (kit's sim engine +
+  zod from /tmp/prof/node_modules; bot child taskset -c 0/1 + --max-old-space-size=768)
+
+## Round 2 — speed fix (2026-11-24, previous builder)
 
 What was slow: the dev window sends one batch per slot with events (63,369
 batches, 128,058 events) and round 1 scanned the whole coin map on every batch —
